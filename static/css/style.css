@@ -39,3 +39,18 @@
     user-select: none; /* Prevents highlighting the image by accident */
     cursor: pointer; /* Prepares us for Checkpoint 2 clicking */
 }
+
+
+/* Highlights the square of the currently selected piece */
+.selected {
+    background-color: rgba(255, 255, 0, 0.6) !important;
+}
+
+/* Adds a small dot indicator to legal destination squares */
+.legal-move::after {
+    content: '';
+    width: 20px;
+    height: 20px;
+    background-color: rgba(0, 0, 0, 0.25);
+    border-radius: 50%;
+}

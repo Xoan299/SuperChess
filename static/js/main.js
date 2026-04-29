@@ -1,3 +1,16 @@
+let selectedSquare = null;
+let legalDestinations = [];
+
+// Helper to convert indices (0-63) to algebraic notation (a8-h1)
+function getSquareName(index) {
+    const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    const rank = 8 - Math.floor(index / 8);
+    const file = files[index % 8];
+    return file + rank;
+}
+
+
+
 // Fetch the game state from Flask Backend
 
 async function fetchGameState() {
@@ -51,6 +64,9 @@ function getPieceImageSrc(pieceChar) {
     return `/static/pieces/${color}${type}.svg`;
 }
 
+
+
+
 function createSquare(container, piece, rowIndex) {
     const square = document.createElement('div');
     square.className = 'square';
@@ -70,8 +86,73 @@ function createSquare(container, piece, rowIndex) {
         
         square.appendChild(img);
     }
+
+
+    // Identify the square
+    const squareIndex = container.children.length;
+    const squareName = getSquareName(squareIndex);
+    square.dataset.square = squareName;
+    
+    // Listen for clicks
+    square.addEventListener('click', () => handleSquareClick(squareName));
     
     container.appendChild(square);
+}
+
+
+
+// Handles Square Clicks
+async function handleSquareClick(squareName) {
+    if (!selectedSquare) {
+        // First Click: Ask Python for legal moves
+        const response = await fetch(`/api/legal-moves?square=${squareName}`);
+        const moves = await response.json();
+        
+        if (moves.length > 0) {
+            selectedSquare = squareName;
+            legalDestinations = moves;
+            console.log(`Selected ${squareName}. Legal moves:`, moves);
+
+            // Trigger the visual highlights here 
+            highlightSquares();
+        }
+    } else {
+        // Second Click: (We will build the move logic later)
+            console.log(`Attempting to move from ${selectedSquare} to ${squareName}`);
+
+        // Reset State and clear Highlights
+        selectedSquare = null;
+        legalDestinations = [];
+        removeHighlights();
+    }
+}
+
+
+
+
+function highlightSquares() {
+    // Clear any existing highlights first 🧹
+    removeHighlights();
+
+    // Highlight the clicked piece
+    const selectedElement = document.querySelector(`[data-square="${selectedSquare}"]`);
+    if (selectedElement) {
+        selectedElement.classList.add('selected');
+    }
+
+    // Highlight all valid destinations
+    legalDestinations.forEach(sq => {
+        const destinationElement = document.querySelector(`[data-square="${sq}"]`);
+        if (destinationElement) {
+            destinationElement.classList.add('legal-move');
+        }
+    });
+}
+
+function removeHighlights() {
+    document.querySelectorAll('.square').forEach(sq => {
+        sq.classList.remove('selected', 'legal-move');
+    });
 }
 
 

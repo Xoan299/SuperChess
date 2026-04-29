@@ -5,3 +5,4 @@ instance/
 *.db
 venv/
 .vscode/
+.DS_Store

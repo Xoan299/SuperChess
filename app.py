@@ -34,13 +34,6 @@ def index():
 def get_state():
     return jsonify(game_state)
 
-if __name__ == '__main__':
-    app.run(debug = True)
-
-
-
-
-
 
 @app.route('/api/legal-moves')
 def get_legal_moves():
@@ -69,4 +62,5 @@ def get_legal_moves():
 
 
 
-
+if __name__ == '__main__':
+    app.run(debug=True, port=5001)
