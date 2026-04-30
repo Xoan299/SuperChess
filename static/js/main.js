@@ -16,10 +16,12 @@ function getSquareName(index) {
 async function fetchGameState() {
     const response = await fetch('/api/state');
     const state = await response.json();
-
-
+    
     // Log it to verify
     console.log("Game State Received: ", state);
+
+    // Update the text on the screen
+    document.getElementById('status').innerText = `Turn: ${state.turn} | Status: ${state.status}`;
 
     // Send the board portion of the state to be rendered
     renderBoard(state.board);
@@ -111,20 +113,29 @@ async function handleSquareClick(squareName) {
         if (moves.length > 0) {
             selectedSquare = squareName;
             legalDestinations = moves;
-            console.log(`Selected ${squareName}. Legal moves:`, moves);
-
-            // Trigger the visual highlights here 
             highlightSquares();
         }
     } else {
-        // Second Click: (We will build the move logic later)
-            console.log(`Attempting to move from ${selectedSquare} to ${squareName}`);
+    // Second Click: Try to move
+    if (legalDestinations.includes(squareName)) {
+        const response = await fetch('/api/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from: selectedSquare, to: squareName })
+        });
 
-        // Reset State and clear Highlights
-        selectedSquare = null;
-        legalDestinations = [];
-        removeHighlights();
+        if (response.ok) {
+    const state = await response.json();
+    console.log("Move response:", state);
+    document.getElementById('status').innerText = `Turn: ${state.turn} | Status: ${state.status}`;
+    renderBoard(state.board);
+}
     }
+
+    selectedSquare = null;
+    legalDestinations = [];
+    removeHighlights();
+}
 }
 
 

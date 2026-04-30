@@ -61,6 +61,45 @@ def get_legal_moves():
     return jsonify(moves)
 
 
+@app.route('/api/move', methods=['POST'])
+def make_move():
+    data = request.json
+    move_uci = f"{data.get('from')}{data.get('to')}"
+    
+    # Create the move object
+    try:
+        move = chess.Move.from_uci(move_uci)
+    except ValueError:
+        return jsonify({"error": "Invalid move format"}), 400
+
+    # Auto-promote pawns to Queen
+    piece = board.piece_at(move.from_square)
+    if piece and piece.piece_type == chess.PAWN:
+        if  (board.turn == chess.WHITE and chess.square_rank(move.to_square) == 7) or \
+            (board.turn == chess.BLACK and chess.square_rank(move.to_square) == 0):
+            move = chess.Move(move.from_square, move.to_square, promotion=chess.QUEEN)  # ✅
+    if move in board.legal_moves:
+        board.push(move)
+        
+        # Update the game_state dictionary
+        game_state["board"] = board.fen()
+        game_state["turn"] = "white" if board.turn == chess.WHITE else "black"
+        
+        # Check game status
+        if board.is_checkmate():
+            winner = "black" if board.turn == chess.WHITE else "white"
+            game_state["status"] = f"checkmate - {winner} wins"
+        elif board.is_stalemate() or board.is_insufficient_material() or board.can_claim_draw():
+            game_state["status"] = "draw"
+        elif board.is_check():
+            game_state["status"] = "check"
+        else:
+            game_state["status"] = "active"
+            
+        return jsonify(game_state)
+    
+    return jsonify({"error": "Illegal move"}), 400
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
