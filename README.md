@@ -28,4 +28,4 @@ A chess web app built as a University project at Providence University.
 pip install flask python-chess
 python app.py
 ```
-Then open `http://127.0.0.1:5000` in your browser.
+Then open `http://127.0.0.1:5001` in your browser.
