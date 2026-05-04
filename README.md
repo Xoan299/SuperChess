@@ -22,7 +22,8 @@ A chess web app built as a University project at Providence University.
 - [ ] Checkpoint 5 — power-up card mode
 - [ ] Checkpoint 6 — online multiplayer
 - [ ] Checkpoint 7 — AI opponent
-
+- Deadline 25 may presentation
+- June 1 final deadline
 ## How to run
 ```bash
 pip install flask python-chess
