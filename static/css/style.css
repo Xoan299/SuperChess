@@ -1,84 +1,392 @@
-/* The main container for the board */
-.chessboard {
-    display: grid;
-    
-    grid-template-columns: repeat(8, 60px);
-    grid-template-rows: repeat(8, 60px);
-    border: 4px solid #333;
-    width: fit-content;
-    margin: 20px;
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Lato:wght@400;700&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-family: 'Lato', sans-serif;
+    margin: 0;
+    min-height: 100vh;
 }
 
-/* Individual squares */
-.square {
-    width: 60px;
-    height: 60px;
-    /* Flexbox is used here to perfectly center the piece inside the square */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 40px;
-    font-family: Arial, sans-serif;
-    user-select: none;
-}
-
-/* The alternating colors */
-.white-sq {
-    background-color: #f0d9b5;
-}
-
-.black-sq {
-    background-color: #b58863;
-}
-
-
-
-.piece {
-    width: 90%; /* Slightly smaller than the square for a nice margin */
-    height: 90%;
-    user-select: none; /* Prevents highlighting the image by accident */
-    cursor: pointer; /* Prepares us for Checkpoint 2 clicking */
-}
-
-
-/* Highlights the square of the currently selected piece */
-.selected {
-    background-color: rgba(255, 255, 0, 0.6) !important;
-}
-
-/* Adds a small dot indicator to legal destination squares */
-.legal-move::after {
-    content: '';
-    width: 20px;
-    height: 20px;
-    background-color: rgba(0, 0, 0, 0.25);
-    border-radius: 50%;
-}
 .game-header {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 20px;
-    padding: 10px 20px;
-    position: relative;
+    padding: 16px 20px;
+    background: rgba(0,0,0,0.3);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.game-header h1 {
+    margin: 0;
+    font-family: 'Cinzel', serif;
+    font-size: 1.6rem;
+    color: #f8d57e;
+    letter-spacing: 0.06em;
 }
 
 .back-btn {
     position: absolute;
     left: 20px;
-    color: #3498db;
+    color: #aaa;
     text-decoration: none;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
+    transition: color 0.2s;
 }
-
-.back-btn:hover {
-    text-decoration: underline;
-}
+.back-btn:hover { color: #fff; }
 
 #mode-badge {
-    background: #3498db;
-    color: white;
-    padding: 4px 12px;
+    color: #1a1a2e;
+    font-weight: 700;
+    padding: 3px 14px;
     border-radius: 20px;
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+/* ── Status bar ── */
+#status {
+    text-align: center;
+    padding: 8px;
+    font-size: 0.95rem;
+    color: #ccc;
+    background: rgba(0,0,0,0.2);
+    letter-spacing: 0.02em;
+}
+#status strong { color: #000000; }
+.status-check { color: #e67e22 !important; }
+.status-checkmate { color: #e74c3c !important; font-weight: 700; }
+.status-special { color: #f39c12; font-weight: 700; }
+
+/* ── Pending power-up banner ── */
+
+@keyframes pulseBanner {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+.pu-cancel-btn {
+    margin-left: 14px;
+    background: rgba(231,76,60,0.7);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 3px 10px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: background 0.2s;
+}
+.pu-cancel-btn:hover { background: #e74c3c; }
+
+/* ── Layout ── */
+.game-layout {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 28px;
+    padding: 24px 16px;
+    flex-wrap: wrap;
+}
+
+/* ── Board ── */
+.chessboard {
+    display: grid;
+    grid-template-columns: repeat(8, 68px);
+    grid-template-rows: repeat(8, 68px);
+    border: 3px solid #8b6914;
+    box-shadow: 0 0 40px rgba(248,213,106,0.15), 0 8px 32px rgba(0,0,0,0.6);
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.square {
+    width: 68px;
+    height: 68px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    user-select: none;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.white-sq { background-color: #f0d9b5; }
+.black-sq  { background-color: #b58863; }
+
+.piece {
+    width: 88%;
+    height: 88%;
+    user-select: none;
+    pointer-events: none;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.35));
+    transition: transform 0.1s;
+}
+
+.selected { background-color: rgba(255, 220, 50, 0.75) !important; }
+
+.legal-move::after {
+    content: '';
+    width: 26px;
+    height: 26px;
+    background-color: rgba(0, 0, 0, 0.22);
+    border-radius: 50%;
+    position: absolute;
+}
+
+/* ── Frozen / Shield overlays ── */
+.frozen-sq { outline: 2px solid #74d7ff; outline-offset: -2px; }
+.shielded-sq { outline: 2px solid #2ecc71; outline-offset: -2px; }
+
+.frozen-overlay,
+.shield-overlay {
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    font-size: 13px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.pu-turn-label {
+    font-size: 0.78rem;
+    color: #aaa;
+    text-align: center;
+}
+
+.pu-empty {
+    font-size: 0.8rem;
+    color: #777;
+    text-align: center;
+    padding: 18px 8px;
+    line-height: 1.6;
+}
+
+/* ── Individual power-up card ── */
+.pu-card {
+    background: rgba(255,255,255,0.06);
+    border: 1.5px solid var(--pu-color, #888);
+    border-radius: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: transform 0.18s, background 0.18s, box-shadow 0.18s;
+    position: relative;
+    overflow: hidden;
+}
+.pu-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--pu-color, #888);
+    opacity: 0;
+    transition: opacity 0.18s;
+    border-radius: 10px;
+}
+.pu-card:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+}
+.pu-card:hover::before { opacity: 0.12; }
+.pu-card:active { transform: scale(0.97); }
+
+.pu-icon { font-size: 1.6rem; text-align: center; margin-bottom: 4px; position: relative; }
+.pu-name {
+    font-weight: 700;
     font-size: 0.85rem;
+    color: var(--pu-color, #eee);
+    text-align: center;
+    margin-bottom: 4px;
+    position: relative;
+}
+.pu-desc {
+    font-size: 0.72rem;
+    color: #bbb;
+    text-align: center;
+    line-height: 1.4;
+    position: relative;
+}
+
+/* Double move ready banner */
+.pu-double-active {
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+    color: #1a1a2e;
+    font-weight: 700;
+    font-size: 0.82rem;
+    text-align: center;
+    padding: 8px 10px;
+    border-radius: 8px;
+    animation: pulseGold 1.2s ease-in-out infinite;
+}
+@keyframes pulseGold {
+    0%, 100% { box-shadow: 0 0 8px rgba(243,156,18,0.5); }
+    50%       { box-shadow: 0 0 20px rgba(243,156,18,0.9); }
+}
+
+/* ── Dice Panel ── */
+.dice-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1.5px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    padding: 20px 18px;
+    min-width: 130px;
+    max-width: 150px;
+    align-self: flex-start;
+    margin-top: 0;
+}
+
+.dice-panel-title {
+    font-family: 'Cinzel', serif;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #e67e22;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.dice-turn-label {
+    font-size: 0.75rem;
+    color: #aaa;
+    text-align: center;
+}
+
+.dice-face {
+    font-size: 4.5rem;
+    line-height: 1;
+    text-align: center;
+    color: #f8d57e;
+    text-shadow: 0 2px 12px rgba(248,213,126,0.5), 0 0 30px rgba(248,213,126,0.2);
+    transition: transform 0.3s, opacity 0.3s;
+    user-select: none;
+}
+
+.dice-waiting {
+    font-size: 3.5rem;
+    color: #555;
+    border: 2px dashed #555;
+    border-radius: 10px;
+    width: 72px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: dicePulse 1.8s ease-in-out infinite;
+}
+
+@keyframes dicePulse {
+    0%, 100% { border-color: #555; color: #555; }
+    50% { border-color: #e67e22; color: #e67e22; }
+}
+
+.dice-rolled {
+    animation: diceReveal 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    filter: drop-shadow(0 0 10px rgba(230,126,34,0.5));
+}
+
+@keyframes diceReveal {
+    0% { transform: scale(0.5) rotate(-20deg); opacity: 0; }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+.dice-piece-label {
+    font-size: 0.82rem;
+    color: #fff;
+    text-align: center;
+    background: rgba(230,126,34,0.15);
+    border: 1px solid rgba(230,126,34,0.3);
+    border-radius: 8px;
+    padding: 5px 10px;
+    line-height: 1.4;
+}
+
+.dice-piece-label strong { color: #e67e22; }
+
+.dice-roll-btn {
+    background: linear-gradient(135deg, #e67e22, #f39c12);
+    color: #1a1a2e;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+    transition: transform 0.15s, filter 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 14px rgba(230,126,34,0.35);
+    font-family: 'Cinzel', serif;
+    letter-spacing: 0.04em;
+}
+
+.dice-roll-btn:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(230,126,34,0.5);
+}
+
+.dice-roll-btn:active { transform: scale(0.97); }
+.dice-roll-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.dice-hint {
+    font-size: 0.75rem;
+    color: #888;
+    text-align: center;
+    line-height: 1.5;
+    padding: 4px 0;
+}
+
+/* ── Power-up panel ── */
+.powerup-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1.5px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    padding: 20px 18px;
+    min-width: 160px;
+    max-width: 180px;
+    align-self: flex-start;
+}
+
+.pu-panel-title {
+    font-family: 'Cinzel', serif;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #9b59b6;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    text-align: center;
+}
+
+/* ── Floating notification ── */
+.pu-notification {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    background: rgba(15,15,30,0.95);
+    border: 1.5px solid #f39c12;
+    border-radius: 12px;
+    padding: 12px 24px;
+    font-size: 0.95rem;
+    color: #fff;
+    z-index: 999;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s, transform 0.3s;
+    text-align: center;
+    white-space: nowrap;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.pu-notification.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
 }
