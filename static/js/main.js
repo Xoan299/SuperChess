@@ -1,6 +1,8 @@
 let selectedSquare = null;
 let legalDestinations = [];
 let gameState = null;
+let clockInterval = null;
+let localClocks = { white: null, black: null };  // ms remaining, client-side countdown
 
 const gameId = typeof GAME_ID !== 'undefined' ? GAME_ID : null;
 
@@ -56,6 +58,15 @@ async function rollDice() {
     return res.json();
 }
 
+async function sendFlag(player) {
+    const res = await fetch(`/api/flag/${gameId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player })
+    });
+    return res.json();
+}
+
 // ================= HELPERS =================
 
 function getSquareName(index) {
@@ -70,6 +81,122 @@ function getPieceImageSrc(pieceChar) {
     const color = isWhite ? 'w' : 'b';
     const type = pieceChar.toUpperCase();
     return `/static/pieces/${color}${type}.svg`;
+}
+
+// ================= CLOCK =================
+
+function formatClock(ms) {
+    if (ms === null || ms === undefined) return '--:--';
+    const totalSec = Math.max(0, Math.ceil(ms / 1000));
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function syncClocksFromState(state) {
+    if (!state.clocks || !state.time_control) {
+        localClocks = { white: null, black: null };
+        return;
+    }
+    localClocks.white = Math.round(state.clocks.white * 1000);
+    localClocks.black = Math.round(state.clocks.black * 1000);
+}
+
+function startClockTick(state) {
+    if (clockInterval) clearInterval(clockInterval);
+    if (!state.time_control || state.status !== 'active') return;
+
+    const activeTurn = state.turn;
+    let lastTick = Date.now();
+
+    clockInterval = setInterval(async () => {
+        const now = Date.now();
+        const elapsed = now - lastTick;
+        lastTick = now;
+
+        // Only decrement the active player's clock
+        if (localClocks[activeTurn] !== null) {
+            localClocks[activeTurn] = Math.max(0, localClocks[activeTurn] - elapsed);
+        }
+
+        updateClockDisplay();
+
+        // Flag if clock hits zero
+        if (localClocks[activeTurn] <= 0) {
+            clearInterval(clockInterval);
+            clockInterval = null;
+            const result = await sendFlag(activeTurn);
+            if (result && !result.error) {
+                gameState = result;
+                updateStatus(result);
+                renderBoard(result.board, result);
+                renderPowerupPanel(result);
+                renderDicePanel(result);
+                syncClocksFromState(result);
+                updateClockDisplay();
+                const winner = activeTurn === 'white' ? 'Black' : 'White';
+                showNotification(`⏱ Time's up! <strong>${winner} wins on time!</strong>`, '#e74c3c', 5000);
+            }
+        }
+    }, 100);
+}
+
+function updateClockDisplay() {
+    const whiteEl = document.getElementById('clock-white');
+    const blackEl = document.getElementById('clock-black');
+    if (!whiteEl || !blackEl) return;
+
+    whiteEl.textContent = formatClock(localClocks.white);
+    blackEl.textContent = formatClock(localClocks.black);
+
+    // Highlight active clock, warning colour when low
+    const turn = gameState?.turn;
+    const isGameOver = gameState && gameState.status !== 'active';
+
+    ['white', 'black'].forEach(color => {
+        const el = color === 'white' ? whiteEl : blackEl;
+        const parentEl = el.closest('.clock-box');
+        if (!parentEl) return;
+        const isActive = !isGameOver && turn === color;
+        parentEl.classList.toggle('clock-active', isActive);
+        const ms = localClocks[color];
+        parentEl.classList.toggle('clock-low', ms !== null && ms < 30000 && isActive);
+        parentEl.classList.toggle('clock-critical', ms !== null && ms < 10000 && isActive);
+    });
+}
+
+function renderClocks(state) {
+    let container = document.getElementById('clocks-container');
+
+    if (!state.time_control) {
+        if (container) container.style.display = 'none';
+        return;
+    }
+
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'clocks-container';
+        container.className = 'clocks-container';
+        // Insert after status bar
+        const statusEl = document.getElementById('status');
+        if (statusEl && statusEl.parentNode) {
+            statusEl.parentNode.insertBefore(container, statusEl.nextSibling);
+        }
+    }
+    container.style.display = 'flex';
+
+    container.innerHTML = `
+        <div class="clock-box clock-black" id="clock-box-black">
+            <div class="clock-label">♟ Black</div>
+            <div class="clock-time" id="clock-black">${formatClock(localClocks.black)}</div>
+        </div>
+        <div class="clock-divider">⏱</div>
+        <div class="clock-box clock-white" id="clock-box-white">
+            <div class="clock-label">♙ White</div>
+            <div class="clock-time" id="clock-white">${formatClock(localClocks.white)}</div>
+        </div>
+    `;
+    updateClockDisplay();
 }
 
 // ================= STATUS =================
@@ -242,6 +369,19 @@ function renderPowerupPanel(state) {
 
 }
 
+// ================= APPLY STATE =================
+
+function applyState(state) {
+    gameState = state;
+    syncClocksFromState(state);
+    updateStatus(state);
+    renderClocks(state);
+    renderBoard(state.board, state);
+    renderPowerupPanel(state);
+    renderDicePanel(state);
+    startClockTick(state);
+}
+
 // ================= POWERUP ACTIONS =================
 
 async function doRollDice() {
@@ -253,11 +393,7 @@ async function doRollDice() {
         if (btn) { btn.disabled = false; btn.textContent = 'Roll Dice'; }
         return;
     }
-    gameState = state;
-    updateStatus(state);
-    renderBoard(state.board, state);
-    renderPowerupPanel(state);
-    renderDicePanel(state);
+    applyState(state);
     const pieceName = state.dice_piece_names?.[state.dice_roll] || state.dice_roll;
     showNotification(`🎲 Rolled <strong>${state.dice_roll}</strong> — Move a <strong>${pieceName}</strong>!`, '#e67e22', 2200);
 }
@@ -268,21 +404,13 @@ async function doActivatePowerup(puId) {
         showNotification(`❌ ${state.error}`, '#e74c3c', 2000);
         return;
     }
-    gameState = state;
-    updateStatus(state);
-    renderBoard(state.board, state);
-    renderPowerupPanel(state);
-    renderDicePanel(state);
+    applyState(state);
     handleLastEvent(state);
 }
 
 async function doCancelPowerup() {
     const state = await cancelPowerup();
-    gameState = state;
-    updateStatus(state);
-    renderBoard(state.board, state);
-    renderPowerupPanel(state);
-    renderDicePanel(state);
+    applyState(state);
 }
 
 // ================= FETCH + RENDER =================
@@ -291,10 +419,13 @@ async function fetchGameState() {
     const state = await fetchState();
     if (!state) return;
     gameState = state;
+    syncClocksFromState(state);
     updateStatus(state);
+    renderClocks(state);
     renderBoard(state.board, state);
     renderPowerupPanel(state);
     renderDicePanel(state);
+    startClockTick(state);
 }
 
 function renderBoard(fen, state) {
@@ -374,11 +505,7 @@ async function handleSquareClick(squareName) {
             showNotification(`❌ ${result.error}`, '#e74c3c', 2000);
             return;
         }
-        gameState = result;
-        updateStatus(result);
-        renderBoard(result.board, result);
-        renderPowerupPanel(result);
-        renderDicePanel(result);
+        applyState(result);
         handleLastEvent(result);
         return;
     }
@@ -394,11 +521,7 @@ async function handleSquareClick(squareName) {
         if (legalDestinations.includes(squareName)) {
             const newState = await sendMove(selectedSquare, squareName);
             if (newState && !newState.error) {
-                gameState = newState;
-                updateStatus(newState);
-                renderBoard(newState.board, newState);
-                renderPowerupPanel(newState);
-                renderDicePanel(newState);
+                applyState(newState);
                 handleLastEvent(newState);
             }
         }

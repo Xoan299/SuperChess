@@ -2,6 +2,7 @@ from flask import Flask, jsonify, render_template, request, redirect, url_for, s
 import chess
 import uuid
 import random
+import time as _time
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-in-production'
@@ -96,9 +97,13 @@ GAME_MODES = {
 }
 
 
-def create_game(mode="classic"):
+def create_game(mode="classic", time_control=None):
+    """
+    time_control: None (no clock), 180 (3 min), or 300 (5 min) — seconds per player
+    """
     game_id = str(uuid.uuid4())[:8]
     board = chess.Board()
+    clock_seconds = int(time_control) if time_control else None
     games[game_id] = {
         "board_obj": board,
         "board": board.fen(),
@@ -114,11 +119,15 @@ def create_game(mode="classic"):
         # Power-up state
         "powerup_hands": {"white": [], "black": []},
         "move_count": {"white": 0, "black": 0},
-        "frozen_squares": {},      # square -> turns_remaining
-        "shielded_squares": {},    # square -> turns_remaining
-        "captured_pieces": {"white": [], "black": []},  # pieces captured FROM each side
-        "pending_powerup": None,   # {"type": ..., "player": ..., "stage": ...}
-        "last_event": None,        # for frontend notifications
+        "frozen_squares": {},
+        "shielded_squares": {},
+        "captured_pieces": {"white": [], "black": []},
+        "pending_powerup": None,
+        "last_event": None,
+        # Clock state
+        "time_control": clock_seconds,
+        "clocks": {"white": clock_seconds, "black": clock_seconds},
+        "clock_started_at": None,
     }
     return game_id
 
@@ -160,7 +169,13 @@ def create_game_route():
     mode = request.form.get('mode', 'classic')
     if mode not in GAME_MODES:
         mode = 'classic'
-    game_id = create_game(mode)
+    time_control = request.form.get('time_control', None)
+    if time_control not in ('180', '300'):
+        time_control = None
+    game_id = create_game(mode, time_control)
+    # Start clock for white immediately if timed
+    if time_control:
+        games[game_id]["clock_started_at"] = _time.time()
     return redirect(url_for('game', game_id=game_id))
 
 
@@ -198,6 +213,8 @@ def get_state(game_id):
         "last_event": game["last_event"],
         "powerup_defs": POWERUPS,
         "dice_piece_names": DICE_PIECE_NAMES,
+        "clocks": _get_clocks(game),
+        "time_control": game["time_control"],
     })
 
 
@@ -344,6 +361,9 @@ def make_move(game_id):
     game["board"] = board.fen()
 
     uses_powerups = GAME_MODES[game["mode"]].get("uses_powerups", False)
+
+    # Commit current player's clock before switching turn
+    _commit_clock(game)
 
     # Switch turn and reset dice for next player
     game["turn"] = "black" if current_player == "white" else "white"
@@ -516,6 +536,69 @@ def cancel_powerup(game_id):
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
+def _get_clocks(game):
+    """Return clocks dict with live elapsed deducted for current player."""
+    if game["time_control"] is None:
+        return None
+    clocks = dict(game["clocks"])
+    if game["clock_started_at"] and game["status"] == "active":
+        elapsed = _time.time() - game["clock_started_at"]
+        turn = game["turn"]
+        clocks[turn] = max(0.0, clocks[turn] - elapsed)
+    return clocks
+
+
+def _commit_clock(game):
+    """Deduct elapsed time from current player and reset the clock_started_at."""
+    if game["time_control"] is None or game["clock_started_at"] is None:
+        return
+    elapsed = _time.time() - game["clock_started_at"]
+    turn = game["turn"]
+    game["clocks"][turn] = max(0.0, game["clocks"][turn] - elapsed)
+    game["clock_started_at"] = _time.time()
+
+
+@app.route('/api/flag/<game_id>', methods=['POST'])
+def flag(game_id):
+    """Called by client when a player's clock hits zero."""
+    if game_id not in games:
+        return jsonify({"error": "Game not found"}), 404
+    game = games[game_id]
+    if game["time_control"] is None:
+        return jsonify({"error": "No time control"}), 400
+    if game["status"] != "active":
+        return jsonify(_full_state(game))
+
+    clocks = _get_clocks(game)
+    # Determine who flagged (whose clock is at 0)
+    data = request.json or {}
+    flagged = data.get("player", game["turn"])
+    winner = "black" if flagged == "white" else "white"
+    game["status"] = f"timeout - {winner} wins"
+    game["clock_started_at"] = None
+    return jsonify(_full_state(game))
+
+
+
+    # Check if a king was removed (e.g. by bomb power-up)
+    white_king = board.pieces(chess.KING, chess.WHITE)
+    black_king = board.pieces(chess.KING, chess.BLACK)
+    if not white_king:
+        game["status"] = "checkmate - black wins"
+        return
+    if not black_king:
+        game["status"] = "checkmate - white wins"
+        return
+
+    if board.is_checkmate():
+        winner = "black" if board.turn == chess.WHITE else "white"
+        game["status"] = f"checkmate - {winner} wins"
+    elif board.is_stalemate() or board.is_insufficient_material() or board.can_claim_draw():
+        game["status"] = "draw"
+    elif board.is_check():
+        game["status"] = "check"
+    else:
+        game["status"] = "active"
 def _update_status(game, board):
     # Check if a king was removed (e.g. by bomb power-up)
     white_king = board.pieces(chess.KING, chess.WHITE)
@@ -537,7 +620,6 @@ def _update_status(game, board):
     else:
         game["status"] = "active"
 
-
 def _full_state(game):
     return {
         "board": game["board"],
@@ -557,6 +639,8 @@ def _full_state(game):
         "powerup_defs": POWERUPS,
         "captured_pieces": game["captured_pieces"],
         "dice_piece_names": DICE_PIECE_NAMES,
+        "clocks": _get_clocks(game),
+        "time_control": game["time_control"],
     }
 
 

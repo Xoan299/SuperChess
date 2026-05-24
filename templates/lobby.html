@@ -14,7 +14,7 @@
 
         <div class="mode-grid">
             {% for mode_id, mode in game_modes.items() %}
-            <div class="mode-powerup" data-mode="{{ mode_id }}">
+            <div class="mode-powerup" data-mode="{{ mode_id }}" onclick="openRules('{{ mode_id }}')">
                 <div class="mode-icon">
                     {% if mode_id == 'classic' %}♟{% endif %}
                     {% if mode_id == 'dice' %}🎲{% endif %}
@@ -30,17 +30,248 @@
                     {% if mode.uses_powerups %}
                     <span class="feature">⚡ Power-Ups</span>
                     {% endif %}
-                    {% if not mode.uses_dice and not mode.uses_powerups and not mode.uses_powerups %}
+                    {% if not mode.uses_dice and not mode.uses_powerups %}
                     <span class="feature">📜 Standard Rules</span>
                     {% endif %}
                 </div>
-                <form action="/create-game" method="POST">
-                    <input type="hidden" name="mode" value="{{ mode_id }}">
-                    <button type="submit" class="play-btn">Play</button>
-                </form>
+                <div class="learn-more-hint">Click to see rules</div>
             </div>
             {% endfor %}
         </div>
     </div>
+
+    <!-- Rules Modal -->
+    <div id="rules-overlay" class="rules-overlay" onclick="closeRulesIfBg(event)">
+        <div class="rules-modal" id="rules-modal">
+            <button class="rules-close" onclick="closeRules()">✕</button>
+            <div class="rules-mode-icon" id="rules-icon"></div>
+            <h2 class="rules-title" id="rules-title"></h2>
+            <div class="rules-tagline" id="rules-tagline"></div>
+
+            <div class="rules-body" id="rules-body"></div>
+
+            <!-- Time control selector -->
+            <div class="time-control-section">
+                <div class="time-control-label">⏱ Time Control</div>
+                <div class="time-control-options">
+                    <label class="time-option">
+                        <input type="radio" name="time_sel" value="" checked>
+                        <span class="time-chip">∞ No Limit</span>
+                    </label>
+                    <label class="time-option">
+                        <input type="radio" name="time_sel" value="180">
+                        <span class="time-chip">3 min</span>
+                    </label>
+                    <label class="time-option">
+                        <input type="radio" name="time_sel" value="300">
+                        <span class="time-chip">5 min</span>
+                    </label>
+                </div>
+            </div>
+
+            <form action="/create-game" method="POST" class="rules-play-form" id="rules-play-form">
+                <input type="hidden" name="mode" id="rules-mode-input" value="">
+                <input type="hidden" name="time_control" id="rules-time-input" value="">
+                <button type="submit" class="rules-play-btn" id="rules-play-btn">⚔ Play Now</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    const RULES = {
+        classic: {
+            icon: "♟",
+            title: "Classic Chess",
+            tagline: "The timeless game. Pure strategy, no gimmicks.",
+            color: "#27ae60",
+            sections: [
+                {
+                    heading: "Objective",
+                    text: "Checkmate your opponent's King — put it under attack with no escape."
+                },
+                {
+                    heading: "How Pieces Move",
+                    items: [
+                        "♙ Pawn — forward one square (two from starting row); captures diagonally",
+                        "♘ Knight — L-shape: two squares in one direction, one perpendicular. Jumps over pieces",
+                        "♗ Bishop — any number of squares diagonally",
+                        "♖ Rook — any number of squares horizontally or vertically",
+                        "♕ Queen — combines Rook + Bishop (most powerful piece)",
+                        "♔ King — one square in any direction"
+                    ]
+                },
+                {
+                    heading: "Special Rules",
+                    items: [
+                        "En passant — a pawn can capture an adjacent enemy pawn that just moved two squares",
+                        "Castling — King moves two squares toward a Rook; Rook jumps to the other side (neither may have moved, no squares in check)",
+                        "Promotion — a Pawn reaching the far rank promotes to Queen, Rook, Bishop, or Knight",
+                        "Check — the King is under attack and must escape",
+                        "Stalemate — current player has no legal moves but isn't in check; the game is a draw"
+                    ]
+                }
+            ]
+        },
+        dice: {
+            icon: "🎲",
+            title: "Dice Chess",
+            tagline: "Fate rolls the dice. Strategy decides what you do with it.",
+            color: "#e74c3c",
+            sections: [
+                {
+                    heading: "Core Idea",
+                    text: "Before each move you must roll a die. The result determines which type of piece you're allowed to move this turn."
+                },
+                {
+                    heading: "Dice Results",
+                    items: [
+                        "1 → ♟ Move any Pawn",
+                        "2 → ♞ Move any Knight",
+                        "3 → ♝ Move any Bishop",
+                        "4 → ♜ Move any Rook",
+                        "5 → ♛ Move any Queen",
+                        "6 → ♚ Wild card — move any piece you like"
+                    ]
+                },
+                {
+                    heading: "Fair Play",
+                    text: "The dice will never strand you completely — if you have no legal moves with the rolled piece type, the system automatically rerolls until you get a playable result (or gives you a wild 6)."
+                },
+                {
+                    heading: "Strategy Tips",
+                    items: [
+                        "Don't rely on moving a specific piece — your opponent can't either",
+                        "Develop broadly so any dice result gives you options",
+                        "A wild 6 at a critical moment can be game-changing — stay ready"
+                    ]
+                }
+            ]
+        },
+        powerup: {
+            icon: "🃏",
+            title: "Power-Up Chess",
+            tagline: "Standard chess — until it suddenly isn't.",
+            color: "#9b59b6",
+            sections: [
+                {
+                    heading: "Earning Power-Ups",
+                    text: "Every 3 moves you make, you earn a random power-up (max 3 in hand). Use them wisely — they can flip the game in an instant."
+                },
+                {
+                    heading: "The Power-Ups",
+                    items: [
+                        "❄️ Freeze — Target one enemy piece; it cannot move for 2 turns",
+                        "🛡️ Shield — Protect one of your pieces from capture for 2 turns",
+                        "🌀 Teleport — Move any of your non-King pieces to any empty square on the board",
+                        "💣 Bomb — Instantly destroy any enemy non-King piece",
+                        "✨ Resurrect — Bring your last captured piece back as a Pawn on your back rank"
+                    ]
+                },
+                {
+                    heading: "Win Condition",
+                    text: "Checkmate OR destroy the enemy King with a Bomb. A King without a square to run to, or a King blown off the board — both end the game."
+                }
+            ]
+        },
+        super: {
+            icon: "⚡",
+            title: "SuperChess",
+            tagline: "All chaos. All modes. Maximum mayhem.",
+            color: "#f39c12",
+            sections: [
+                {
+                    heading: "What Is SuperChess?",
+                    text: "SuperChess combines Dice Chess and Power-Up Chess into one gloriously unpredictable experience. Every rule from both modes applies simultaneously."
+                },
+                {
+                    heading: "Each Turn",
+                    items: [
+                        "Roll the dice to see which piece type you must move",
+                        "Optionally use a power-up before or instead of your move",
+                        "Earn a new power-up every 3 moves"
+                    ]
+                },
+                {
+                    heading: "Power-Ups",
+                    items: [
+                        "❄️ Freeze — Enemy piece frozen for 2 turns",
+                        "🛡️ Shield — Your piece protected for 2 turns",
+                        "🌀 Teleport — Warp your piece anywhere empty",
+                        "💣 Bomb — Destroy any non-King enemy piece",
+                        "✨ Resurrect — Revive last captured piece as a Pawn"
+                    ]
+                },
+                {
+                    heading: "Win Condition",
+                    text: "Checkmate or destroy the enemy King. With dice, power-ups, and chaos in the mix — anything can happen until the very last moment."
+                }
+            ]
+        }
+    };
+
+    function openRules(modeId) {
+        const data = RULES[modeId];
+        if (!data) return;
+
+        document.getElementById('rules-icon').textContent = data.icon;
+        document.getElementById('rules-title').textContent = data.title;
+        document.getElementById('rules-tagline').textContent = data.tagline;
+        document.getElementById('rules-mode-input').value = modeId;
+        document.getElementById('rules-play-btn').style.background = data.color;
+
+        // Build body
+        const body = document.getElementById('rules-body');
+        body.innerHTML = '';
+        data.sections.forEach(sec => {
+            const section = document.createElement('div');
+            section.className = 'rules-section';
+            const h = document.createElement('h3');
+            h.textContent = sec.heading;
+            section.appendChild(h);
+            if (sec.text) {
+                const p = document.createElement('p');
+                p.textContent = sec.text;
+                section.appendChild(p);
+            }
+            if (sec.items) {
+                const ul = document.createElement('ul');
+                sec.items.forEach(item => {
+                    const li = document.createElement('li');
+                    li.textContent = item;
+                    ul.appendChild(li);
+                });
+                section.appendChild(ul);
+            }
+            body.appendChild(section);
+        });
+
+        // Set accent color CSS var
+        document.getElementById('rules-modal').style.setProperty('--accent', data.color);
+
+        // Reset time selection
+        document.querySelectorAll('input[name="time_sel"]').forEach(r => r.checked = (r.value === ''));
+
+        const overlay = document.getElementById('rules-overlay');
+        overlay.classList.add('open');
+        document.body.style.overflow = 'hidden';
+    }
+
+    // Sync selected time to hidden input before form submit
+    document.getElementById('rules-play-form').addEventListener('submit', function() {
+        const sel = document.querySelector('input[name="time_sel"]:checked');
+        document.getElementById('rules-time-input').value = sel ? sel.value : '';
+    });
+
+    function closeRules() {
+        document.getElementById('rules-overlay').classList.remove('open');
+        document.body.style.overflow = '';
+    }
+
+    function closeRulesIfBg(e) {
+        if (e.target === document.getElementById('rules-overlay')) closeRules();
+    }
+
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRules(); });
+    </script>
 </body>
 </html>
